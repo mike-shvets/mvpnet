@@ -50,6 +50,8 @@ class ScanNet2D(Dataset):
     split_map = {
         'train': 'scannetv2_train.txt',
         'val': 'scannetv2_val.txt',
+        'train_mini': 'scannetv2_train_mini.txt',
+        'val_mini': 'scannetv2_val_mini.txt',
         'test': 'scannetv2_test.txt',
     }
     # exclude some frames with problematic data (e.g. depth frames with zeros everywhere or unreadable labels)
@@ -67,6 +69,7 @@ class ScanNet2D(Dataset):
                  to_tensor=False, subsample=None,
                  resize=None, normalizer=None,
                  flip=0.0, color_jitter=None,
+                 label_mode="label"
                  ):
         self.root_dir = root_dir
         self.split = split
@@ -78,6 +81,7 @@ class ScanNet2D(Dataset):
         # status
         self.to_tensor = to_tensor
         self.subsample = subsample
+        self.label_mode = label_mode
 
         # load split
         with open(osp.join(self.split_dir, self.split_map[split]), 'r') as f:
@@ -139,7 +143,7 @@ class ScanNet2D(Dataset):
                 # 'path/color': osp.join(scan_dir, 'color', frame_id + '.jpg'),
                 'path/color': osp.join(scan_dir, 'color', frame_id + '.png'),
                 'path/depth': osp.join(scan_dir, 'depth', frame_id + '.png'),
-                'path/label': osp.join(scan_dir, 'label', frame_id + '.png'),
+                'path/label': osp.join(scan_dir, self.label_mode, frame_id + '.png'),
             })
         return meta_data
 

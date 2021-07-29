@@ -10,6 +10,7 @@ DATASET:
   TRAIN: "train"
   VAL: "val"
   ScanNet2D:
+    label_mode: "label-filt"
     resize: (160, 120)
     augmentation:
       color_jitter: (0.4, 0.4, 0.4)

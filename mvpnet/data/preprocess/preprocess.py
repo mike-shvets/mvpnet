@@ -16,16 +16,27 @@ from plyfile import PlyData
 from PIL import Image
 import open3d as o3d
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument("scannet_root", help="Path to scannet root folder.")
+parser.add_argument("--label-mode", default="label", choices=["label", "label-filt"],
+                    help="Specificator of which label files to read.")
+parser.add_argument('-o', '--output-dir', type=str, required=True, help='output directory')
+parser.add_argument('-n', '--num-workers', default=16, type=int, help='number of workers')
+parser.add_argument('-s', '--split', required=True, type=str, help='split[train/val/test]')
+parser.add_argument('--rgbd', action='store_true', help='compute RGBD overlaps for MVPNet')
+args = parser.parse_args()
 # DATA_DIR = '/datasets_local/ScanNet'
 # SCAN_DIR = 'scans_resize_160x120'
 # META_DIR = '/home/docker_user/workspace/mvpnet_private/mvpnet/data/meta_files'
 
 # DATA_DIR = '/data/dataset/ScanNet'
 # SCAN_DIR = 'scans'
-DATA_DIR = '/home/jiayuan/Projects/mvpnet_private/data/ScanNet'
+DATA_DIR = args.scannet_root
 SCAN_DIR = 'scans_resize_160x120'
 SCAN_TEST_DIR = 'scans_test'
-META_DIR = '/home/jiayuan/Projects/mvpnet_private/mvpnet/data/meta_files'
+META_DIR = args.scannet_root
+
 
 SEG_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
 # INST_CLASS_IDS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
@@ -54,7 +65,7 @@ def get_paths(scan_dir, scan_id):
         'color': osp.join(scan_dir, 'color', '{}.jpg'),
         'depth': osp.join(scan_dir, 'depth', '{}.png'),
         'pose': osp.join(scan_dir, 'pose', '{}.txt'),
-        'label_2d': osp.join(scan_dir, 'label', '{}.png'),
+        'label_2d': osp.join(scan_dir, args.label_mode, '{}.png'),
         'intrinsics_depth': osp.join(scan_dir, 'intrinsic', 'intrinsic_depth.txt'),
         'scene_info_txt': osp.join(scan_dir, scan_id + '.txt'),
         'label_id_tsv': osp.join(META_DIR, 'scannetv2-labels.combined.tsv'),
@@ -97,7 +108,7 @@ def unproject(k, depth_map, mask=None):
 
 
 def compute_rgbd_knn(frame_ids, cam_matrix, paths, whole_scene_pts,
-                     num_base_pts=2000, resize=(80, 60)):
+                     num_base_pts=2000, resize=(80, 60), scan_id=None):
     # choose m base points
     base_point_ind = np.random.choice(len(whole_scene_pts), num_base_pts, replace=False)
     base_pts = whole_scene_pts[base_point_ind]
@@ -135,7 +146,7 @@ def compute_rgbd_knn(frame_ids, cam_matrix, paths, whole_scene_pts,
         # load pose
         pose = np.loadtxt(paths['pose'].format(frame_id))
         if np.any(np.isinf(pose)):
-            print('Skipping frame {}, because pose is not valid.'.format(frame_id))
+            print('Skipping frame {} in {}, because pose is not valid.'.format(frame_id, scan_id))
             continue
 
         # load depth map
@@ -231,7 +242,7 @@ def process_scan_3d_sem_seg(scan_id, is_test=False, compute_rgbd_overlap=False, 
         if not frame_ids:
             print('WARNING: No frames found, check glob path {}'.format(glob_path))
 
-        base_point_ind, pointwise_rgbd_overlap = compute_rgbd_knn(frame_ids, cam_matrix, paths, data_dict['points'])
+        base_point_ind, pointwise_rgbd_overlap = compute_rgbd_knn(frame_ids, cam_matrix, paths, data_dict['points'], scan_id=scan_id)
         data_dict.update({
             'base_point_ind': base_point_ind,
             'pointwise_rgbd_overlap': pointwise_rgbd_overlap,
@@ -253,19 +264,14 @@ def process_scan_3d_sem_seg(scan_id, is_test=False, compute_rgbd_overlap=False, 
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--output-dir', type=str, required=True, help='output directory')
-    parser.add_argument('-n', '--num-workers', default=16, type=int, help='number of workers')
-    parser.add_argument('-s', '--split', required=True, type=str, help='split[train/val/test]')
-    parser.add_argument('--rgbd', action='store_true', help='compute RGBD overlaps for MVPNet')
-    args = parser.parse_args()
 
     split_filename = osp.join(META_DIR, 'scannetv2_{:s}.txt'.format(args.split))
     with open(split_filename, 'r') as f:
         scan_ids = [line.rstrip() for line in f]
     is_test = (args.split == 'test')
     output_dir = args.output_dir
-    os.makedirs(output_dir, exist_ok=True)
+    scans_output_dir = os.path.join(output_dir, "scans")
+    os.makedirs(scans_output_dir, exist_ok=True)
 
     # Debug
     if _DEBUG:
@@ -275,8 +281,17 @@ def main():
 
     # Multiprocessing
     import multiprocessing as mp
-    p = mp.Pool(args.num_workers)
-    func = partial(process_scan_3d_sem_seg, compute_rgbd_overlap=args.rgbd, is_test=is_test)
+    num_workers = min(args.num_workers, mp.cpu_count())
+    num_workers = min(num_workers, len(scan_ids))
+    print("*" * 1000)
+    print(f"Initializing a pool with {num_workers} workers")
+    p = mp.Pool(num_workers)
+    func = partial(
+        process_scan_3d_sem_seg,
+        compute_rgbd_overlap=args.rgbd,
+        is_test=is_test,
+        output_dir=scans_output_dir,
+    )
     res = p.map(func, scan_ids, chunksize=1)
     p.close()
     p.join()

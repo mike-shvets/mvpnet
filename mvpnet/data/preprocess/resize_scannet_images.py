@@ -1,3 +1,4 @@
+import argparse
 import os
 import os.path as osp
 import glob
@@ -9,8 +10,19 @@ import multiprocessing as mp
 resize = (160, 120)
 # resize = (640, 480)
 # adapt the following paths
-raw_dir = "/home/jiayuan/Projects/mvpnet_private/data/ScanNet/scans"
-out_dir = "/home/jiayuan/Projects/mvpnet_private/data/ScanNet/scans_resize_{}x{}".format(resize[0], resize[1])
+
+parser = argparse.ArgumentParser("Paths args")
+parser.add_argument("scannet_root", help="Path to scannet root folder.")
+parser.add_argument("--label-mode", default="label", choices=["label", "label-filt"],
+                    help="Specificator of which label files to read.")
+parser.add_argument("--num-processes", default=16, type=int,
+                    help="Number of parallel processes.")
+args = parser.parse_args()
+
+raw_dir = os.path.join(args.scannet_root, "scans")
+assert os.path.exists(raw_dir), "scans folder not found under the provided scannet root."
+out_dir = os.path.join(args.scannet_root, "scans_resize_{}x{}".format(resize[0], resize[1]))
+
 exclude_frames = {
     'scene0243_00': ['1175', '1176', '1177', '1178', '1179', '1180', '1181', '1182', '1183', '1184'],
     'scene0538_00': ['1925', '1928', '1929', '1931', '1932', '1933'],
@@ -22,7 +34,7 @@ exclude_frames = {
 def worker_func(scan_id):
     scan_dir = osp.join(raw_dir, scan_id)
     color_path = osp.join(scan_dir, 'color', '{}.jpg')
-    label_path = osp.join(scan_dir, 'label', '{}.png')
+    label_path = osp.join(scan_dir, args.label_mode, '{}.png')
     depth_path = osp.join(scan_dir, 'depth', '{}.png')
 
     # get all frame ids
@@ -46,7 +58,7 @@ def worker_func(scan_id):
 
         save_dict = {
             'color': color,
-            'label': label,
+            args.label_mode: label,
             'depth': depth,
         }
         for k, img in save_dict.items():
@@ -64,7 +76,10 @@ if not osp.exists(out_dir):
 scan_ids = sorted(os.listdir(raw_dir))
 # for scan_id in scan_ids:
 #     worker_func(scan_id)
-p = mp.Pool(processes=16)
+num_processes = min(args.num_processes, mp.cpu_count())
+num_processes = min(num_processes, len(scan_ids))
+p = mp.Pool(processes=num_processes)
 p.map(worker_func, scan_ids, chunksize=1)
 p.close()
 p.join()
+

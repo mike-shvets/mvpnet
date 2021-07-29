@@ -20,6 +20,7 @@ _C.DATASET.ScanNet2D.normalizer = ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 _C.DATASET.ScanNet2D.augmentation = CN()
 _C.DATASET.ScanNet2D.augmentation.flip = 0.0
 _C.DATASET.ScanNet2D.augmentation.color_jitter = ()
+_C.DATASET.ScanNet2D.label_mode = "label"
 
 # ---------------------------------------------------------------------------- #
 # Specific validation options
