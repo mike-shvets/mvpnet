@@ -99,9 +99,11 @@ def train(cfg, output_dir='', run_name=''):
         freezer = None
 
     # build data loader
+    max_iteration = cfg.SCHEDULER.MAX_ITERATION
+    start_iteration = checkpoint_data.get('iteration', 0)
     # Reset the random seed again in case the initialization of models changes the random state.
     set_random_seed(cfg.RNG_SEED)
-    train_dataloader = build_dataloader(cfg, mode='train')
+    train_dataloader = build_dataloader(cfg, mode='train', iter_based_sampler_params=(max_iteration, start_iteration))
     val_period = cfg.VAL.PERIOD
     val_dataloader = build_dataloader(cfg, mode='val') if val_period > 0 else None
 
@@ -116,8 +118,6 @@ def train(cfg, output_dir='', run_name=''):
     # Train
     # Customization begins here.
     # ---------------------------------------------------------------------------- #
-    max_iteration = cfg.SCHEDULER.MAX_ITERATION
-    start_iteration = checkpoint_data.get('iteration', 0)
     best_metric_name = 'best_{}'.format(cfg.VAL.METRIC)
     best_metric = checkpoint_data.get(best_metric_name, None)
     logger.info('Start training from iteration {}'.format(start_iteration))
@@ -132,9 +132,9 @@ def train(cfg, output_dir='', run_name=''):
     val_metric_logger = MetricLogger(delimiter='  ')
     val_metric_logger.add_meters(val_metric)
 
-    # wrap the dataloader
-    batch_sampler = train_dataloader.batch_sampler
-    train_dataloader.batch_sampler = IterationBasedBatchSampler(batch_sampler, max_iteration, start_iteration)
+    # # wrap the dataloader
+    # batch_sampler = train_dataloader.batch_sampler
+    # train_dataloader.batch_sampler = IterationBasedBatchSampler(batch_sampler, max_iteration, start_iteration)
 
     def setup_train():
         # set training mode

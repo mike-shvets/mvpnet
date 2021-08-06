@@ -1,11 +1,12 @@
 from __future__ import division
-from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataloader import DataLoader, RandomSampler, BatchSampler
 from common.utils.torch_util import worker_init_fn
 from common.utils.sampler import RepeatSampler
 from mvpnet.data import transforms as T
+from common.utils.sampler import IterationBasedBatchSampler
 
 
-def build_dataloader(cfg, mode='train'):
+def build_dataloader(cfg, mode='train', iter_based_sampler_params=None):
     assert mode in ['train', 'val']
     batch_size = cfg[mode.upper()].BATCH_SIZE
     is_train = (mode == 'train')
@@ -20,24 +21,42 @@ def build_dataloader(cfg, mode='train'):
         raise NotImplementedError('Unsupported task: {}'.format(cfg.TASK))
 
     if is_train:
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            drop_last=cfg.DATALOADER.DROP_LAST,
-            num_workers=cfg.DATALOADER.NUM_WORKERS,
-            worker_init_fn=worker_init_fn,
-        )
+        sampler = RandomSampler(dataset)  # shuffle
+        drop_last = cfg.DATALOADER.DROP_LAST
     else:
         sampler = RepeatSampler(dataset, repeats=cfg.VAL.REPEATS)
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            sampler=sampler,
-            drop_last=False,
-            num_workers=cfg.DATALOADER.NUM_WORKERS,
-            worker_init_fn=worker_init_fn,
-        )
+        drop_last = False
+    
+    batch_sampler = BatchSampler(sampler, batch_size, drop_last)
+    if iter_based_sampler_params is not None:
+        batch_sampler = IterationBasedBatchSampler(batch_sampler, *iter_based_sampler_params)
+
+    dataloader = DataLoader(
+        dataset,
+        batch_sampler=batch_sampler,
+        num_workers=cfg.DATALOADER.NUM_WORKERS,
+        worker_init_fn=worker_init_fn,
+    )
+
+    # if is_train:
+    #     dataloader = DataLoader(
+    #         dataset,
+    #         batch_size=batch_size,
+    #         shuffle=True,
+    #         drop_last=cfg.DATALOADER.DROP_LAST,
+    #         num_workers=cfg.DATALOADER.NUM_WORKERS,
+    #         worker_init_fn=worker_init_fn,
+    #     )
+    # else:
+    #     sampler = RepeatSampler(dataset, repeats=cfg.VAL.REPEATS)
+    #     dataloader = DataLoader(
+    #         dataset,
+    #         batch_size=batch_size,
+    #         sampler=sampler,
+    #         drop_last=False,
+    #         num_workers=cfg.DATALOADER.NUM_WORKERS,
+    #         worker_init_fn=worker_init_fn,
+    #     )
 
     return dataloader
 
