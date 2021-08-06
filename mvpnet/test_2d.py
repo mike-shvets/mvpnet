@@ -80,6 +80,7 @@ def test(cfg, args, output_dir='', run_name=''):
                              subsample=None, to_tensor=True,
                              resize=cfg.DATASET.ScanNet2D.resize,
                              normalizer=cfg.DATASET.ScanNet2D.normalizer,
+                             label_mode=cfg.DATASET.ScanNet2D.label_mode,
                              )
     batch_size = args.batch_size or cfg.VAL.BATCH_SIZE
     num_workers = args.num_workers or cfg.DATALOADER.NUM_WORKERS
