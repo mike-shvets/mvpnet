@@ -1,0 +1,66 @@
+description: MVPNet
+
+env_defaults:
+  AML_TARGET: v100x1
+  AML_TARGET_NUM_GPUS: 1
+
+target:
+  service: aml
+  name: $AML_TARGET
+
+storage:
+  external:
+    storage_account_name: internship2021
+    container_name: avatar-placement
+
+environment:
+  image: detectron2:mvpnet_v2
+  registry: avapinternship.azurecr.io
+  username: avapinternship
+
+code:
+  local_dir: $CONFIG_DIR/../
+
+jobs:
+- name: preprocess_resize
+  sku: G${AML_TARGET_NUM_GPUS}
+  command:
+  - python mvpnet/data/preprocess/resize_scannet_images.py /mnt/external/scannet/ --label-mode label-filt --num-processes 1000
+
+
+- name: preprocess
+  sku: G${AML_TARGET_NUM_GPUS}
+  command:
+  # - python mvpnet/data/preprocess/resize_scannet_images.py /mnt/external/scannet/ --label-mode label-filt --num-processes 1000
+  # - cd /mnt/external/scannet/scans
+  # - echo ${PWD}
+  # - rsync -aR /mnt/external/scannet/scans/./scene0*/*.ply /mnt/external/scannet/scans_resize_160x120/
+  # - cp --parents scene0*/*.ply /mnt/external/scannet/scans_resize_160x120/
+  # - rsync -aR -r /mnt/external/scannet/scans/./scene0*/intrinsic /mnt/external/scannet/scans_resize_160x120/
+  # - cp -r --parents scene0*/intrinsic /mnt/external/scannet/scans_resize_160x120/
+  # - rsync -aR -r /mnt/external/scannet/scans/./scene0*/pose /mnt/external/scannet/scans_resize_160x120/
+  # - cp -r --parents scene0*/pose /mnt/external/scannet/scans_resize_160x120/
+  - python mvpnet/data/preprocess/preprocess.py /mnt/external/scannet -o /mnt/external/scannet/mvpnet -s train --rgbd -n 1000
+  - python mvpnet/data/preprocess/preprocess.py /mnt/external/scannet -o /mnt/external/scannet/mvpnet -s val --rgbd -n 1000
+
+
+- name: train_2d
+  sku: G${AML_TARGET_NUM_GPUS}
+  command:
+  - bash compile.sh
+  - python mvpnet/train_2d.py
+    --cfg configs/scannet/unet_resnet34.yaml
+    DATASET.ROOT_DIR /mnt/external/scannet
+    OUTPUT_DIR /mnt/external/t-mshvets/mvpnet/unet_resnet34
+
+# - name: train_3d
+- name: train_3d_try2
+  sku: G${AML_TARGET_NUM_GPUS}
+  command:
+  - bash compile.sh
+  - python mvpnet/train_mvpnet_3d.py
+    --cfg configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml
+    MODEL_2D.CKPT_PATH /mnt/external/t-mshvets/mvpnet/unet_resnet34/model_best.pth
+    DATASET.ScanNet2D3DChunks.cache_dir /mnt/external/scannet/mvpnet
+    DATASET.ScanNet2D3DChunks.image_dir /mnt/external/scannet/scans_resize_160x120
+    OUTPUT_DIR /mnt/external/t-mshvets/mvpnet/mvpnet_3d_unet_resnet34_pn2ssg
