@@ -48,6 +48,8 @@ class ScanNet2D3DChunks(Dataset):
         'train': 'scannetv2_train.txt',
         'val': 'scannetv2_val.txt',
         'test': 'scannetv2_test.txt',
+        'train_mini': 'scannetv2_train.txt',
+        'val_mini': 'scannetv2_val.txt',
     }
     # exclude some frames with problematic data (e.g. depth frames with zeros everywhere or unreadable labels)
     exclude_frames = {
@@ -56,6 +58,7 @@ class ScanNet2D3DChunks(Dataset):
         'scene0639_00': ['442', '443', '444'],
         'scene0299_01': ['1512'],
     }
+    exclude_scans = ["scene0636_00", "scene0211_01"]
     ignore_value = -100
 
     def __init__(self,
@@ -95,6 +98,8 @@ class ScanNet2D3DChunks(Dataset):
             to_tensor (bool): whether to convert to torch.Tensor
         """
         super(ScanNet2D3DChunks, self).__init__()
+
+        self.logger = logging.getLogger(__name__)
 
         # cache: pickle files containing point clouds, 3D labels and rgbd overlap
         self.cache_dir = cache_dir
@@ -169,12 +174,16 @@ class ScanNet2D3DChunks(Dataset):
         self._load_dataset()
         # print(time.time() - tic)
 
-        logger = logging.getLogger(__name__)
-        logger.info(str(self))
+        self.logger.info(str(self))
 
     def _load_dataset(self):
         with open(osp.join(self.cache_dir, 'scannetv2_{}.pkl'.format(self.split)), 'rb') as f:
             cache_data = pickle.load(f)
+        
+        excluded_data = [d for d in cache_data if d["scan_id"] in self.exclude_scans]
+        if len(excluded_data):
+            self.logger.warning(f"Excluding {len(excluded_data)} from {self.split} dataset.")
+        cache_data = [d for d in cache_data if d["scan_id"] not in self.exclude_scans]
         self.data = cache_data
         self.scan_ids = [scan['scan_id'] for scan in cache_data]
         self.total_frames = sum(len(x['frame_ids']) for x in cache_data)
@@ -185,7 +194,7 @@ class ScanNet2D3DChunks(Dataset):
             # 'color': osp.join(scan_dir, 'color', '{}.jpg'),
             'depth': osp.join(scan_dir, 'depth', '{}.png'),
             'pose': osp.join(scan_dir, 'pose', '{}.txt'),
-            '2d_label': osp.join(scan_dir, 'label', '{}.png'),
+            # '2d_label': osp.join(scan_dir, 'label', '{}.png'),
         }
 
     def get_rgbd_data(self, data_dict, chunk_points, chunk_box, chunk_mask):
